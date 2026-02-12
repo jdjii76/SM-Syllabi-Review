@@ -43,6 +43,26 @@ class SyllabiExtractorApp(QMainWindow):
             'Course Schedule': [],
         }
         
+        # Map section names to alternative keywords for searching
+        self.section_aliases = {
+            'Learning Outcomes': ['learning outcomes', 'learning objectives', 'course objectives'],
+            'Prerequisites': ['prerequisites', 'pre-requisites', 'pre requisites'],
+            'Course Information': ['course information'],
+            'Instructor Information': ['instructor information', 'instructor'],
+            'Course Description': ['course description'],
+            'Credit Hours': ['credit hours'],
+            'Course Materials': ['course materials'],
+            'Required Text': ['required text', 'required texts', 'textbook', 'textbooks'],
+            'Course Requirements': ['course requirements'],
+            'Grading Policy': ['grading policy'],
+            'Grading Scale': ['grading scale'],
+            'Attendance Policy': ['attendance policy', 'absences'],
+            'Late Work Policy': ['late work policy', 'late submission'],
+            'Academic Integrity': ['academic integrity', 'plagiarism', 'honor code'],
+            'Disability Services': ['disability services', 'accommodations', 'ada'],
+            'Course Schedule': ['course schedule', 'course calendar'],
+        }
+        
         self.initUI()
         
     def initUI(self):
@@ -311,7 +331,16 @@ class SyllabiExtractorApp(QMainWindow):
                 section_content = self.extract_section(content, section)
                 row_data[section] = section_content if section_content else "[Not Found]"
             
+            # Search for prerequisites anywhere in the document
+            if 'Prerequisites' in checked_sections and (row_data.get('Prerequisites') == "[Not Found]" or 'Prerequisites' not in row_data):
+                extracted_prereqs = self.extract_prerequisites(content)
+                if extracted_prereqs:
+                    row_data['Prerequisites'] = extracted_prereqs
+            
             export_data.append(row_data)
+        
+        # Sort by course number
+        export_data = self.sort_by_course_number(export_data)
         
         # Save to Excel
         file_path, _ = QFileDialog.getSaveFileName(
@@ -330,7 +359,14 @@ class SyllabiExtractorApp(QMainWindow):
         content_lower = content.lower()
         section_lower = section_name.lower()
         
-        start_idx = content_lower.find(section_lower)
+        # Try to find the section using its aliases
+        start_idx = -1
+        aliases = self.section_aliases.get(section_name, [section_lower])
+        for alias in aliases:
+            start_idx = content_lower.find(alias.lower())
+            if start_idx != -1:
+                break
+        
         if start_idx == -1:
             return None
         
@@ -449,6 +485,43 @@ class SyllabiExtractorApp(QMainWindow):
                 break
         
         return course_code, course_title
+    
+    def sort_by_course_number(self, data):
+        """Sort courses by course number extracted from course code"""
+        import re
+        
+        def get_course_number(row_data):
+            course_code = row_data.get('Course Code', 'Unknown')
+            if course_code == 'Unknown':
+                return (float('inf'), '')  # Put unknowns at the end
+            
+            match = re.search(r'(\d+)', course_code)
+            if match:
+                return (int(match.group(1)), course_code)
+            return (float('inf'), course_code)
+        
+        return sorted(data, key=get_course_number)
+    
+    def extract_prerequisites(self, content):
+        """Search for prerequisites in the entire document"""
+        import re
+        
+        # Patterns to search for prerequisite information
+        # These patterns capture the prerequisite text after the keyword
+        prereq_patterns = [
+            r'(?:prerequisite|pre-requisite|pre requisite|prerequisite\(s\))[:\s]+([^\n]+)',
+            r'(?:student must have)[:\s]+([^\n]+)',
+        ]
+        
+        prerequisites = []
+        for pattern in prereq_patterns:
+            matches = re.findall(pattern, content, re.IGNORECASE)
+            for match in matches:
+                prereq_text = match.strip()
+                if prereq_text and prereq_text not in prerequisites:
+                    prerequisites.append(prereq_text)
+        
+        return '\n'.join(prerequisites) if prerequisites else None
     
     def update_comparison_combos(self):
         """Update the comparison combo boxes with loaded files"""
@@ -790,7 +863,13 @@ class SyllabiExtractorApp(QMainWindow):
         for row_idx, row_data in enumerate(data, 4):
             for col_idx, column_name in enumerate(all_columns, 1):
                 cell = ws.cell(row=row_idx, column=col_idx)
-                cell.value = row_data.get(column_name, "")
+                cell_value = row_data.get(column_name, "")
+                
+                # Format learning outcomes/objectives as bullet points
+                if any(keyword in column_name.lower() for keyword in ['learning', 'outcome', 'objective', 'goal']):
+                    cell_value = self.format_as_bullets(cell_value)
+                
+                cell.value = cell_value
                 cell.border = border
                 cell.alignment = wrap_alignment
             
@@ -814,6 +893,27 @@ class SyllabiExtractorApp(QMainWindow):
         ws.freeze_panes = 'A4'
         
         wb.save(file_path)
+    
+    def format_as_bullets(self, text):
+        """Convert multi-line text to bullet point format"""
+        if not text or text == "[Not Found]":
+            return text
+        
+        lines = text.split('\n')
+        bullet_lines = []
+        
+        for line in lines:
+            line = line.strip()
+            # Skip empty lines
+            if not line:
+                continue
+            # Remove existing bullet points if any
+            if line.startswith('•') or line.startswith('-'):
+                line = line.lstrip('•-').strip()
+            # Add bullet point
+            bullet_lines.append(f"• {line}")
+        
+        return '\n'.join(bullet_lines) if bullet_lines else text
 
 
 def main():

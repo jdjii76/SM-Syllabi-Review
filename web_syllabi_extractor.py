@@ -40,6 +40,26 @@ predefined_sections = {
     'Course Schedule': [],
 }
 
+# Map section names to alternative keywords for searching
+section_aliases = {
+    'Learning Outcomes': ['learning outcomes', 'learning objectives', 'course objectives'],
+    'Prerequisites': ['prerequisites', 'pre-requisites', 'pre requisites'],
+    'Course Information': ['course information'],
+    'Instructor Information': ['instructor information', 'instructor'],
+    'Course Description': ['course description'],
+    'Credit Hours': ['credit hours'],
+    'Course Materials': ['course materials'],
+    'Required Text': ['required text', 'required texts', 'textbook', 'textbooks'],
+    'Course Requirements': ['course requirements'],
+    'Grading Policy': ['grading policy'],
+    'Grading Scale': ['grading scale'],
+    'Attendance Policy': ['attendance policy', 'absences'],
+    'Late Work Policy': ['late work policy', 'late submission'],
+    'Academic Integrity': ['academic integrity', 'plagiarism', 'honor code'],
+    'Disability Services': ['disability services', 'accommodations', 'ada'],
+    'Course Schedule': ['course schedule', 'course calendar'],
+}
+
 def read_file(file_path, file_bytes):
     """Read file content based on extension"""
     file_name = file_path.name
@@ -87,12 +107,38 @@ def extract_course_info(content):
     
     return course_code, course_title
 
+def extract_prerequisites(content):
+    """Search for prerequisites in the entire document"""
+    # Patterns to search for prerequisite information
+    # These patterns capture the prerequisite text after the keyword
+    prereq_patterns = [
+        r'(?:prerequisite|pre-requisite|pre requisite|prerequisite\(s\))[:\s]+([^\n]+)',
+        r'(?:student must have)[:\s]+([^\n]+)',
+    ]
+    
+    prerequisites = []
+    for pattern in prereq_patterns:
+        matches = re.findall(pattern, content, re.IGNORECASE)
+        for match in matches:
+            prereq_text = match.strip()
+            if prereq_text and prereq_text not in prerequisites:
+                prerequisites.append(prereq_text)
+    
+    return '\n'.join(prerequisites) if prerequisites else None
+
 def extract_section(content, section_name):
     """Extract a predefined section from the content"""
     content_lower = content.lower()
     section_lower = section_name.lower()
     
-    start_idx = content_lower.find(section_lower)
+    # Try to find the section using its aliases
+    start_idx = -1
+    aliases = section_aliases.get(section_name, [section_lower])
+    for alias in aliases:
+        start_idx = content_lower.find(alias.lower())
+        if start_idx != -1:
+            break
+    
     if start_idx == -1:
         return None
     
@@ -474,6 +520,12 @@ with col_export:
                         section_content = extract_section(content, section)
                         row_data[section] = section_content if section_content else "[Not Found]"
                     
+                    # Search for prerequisites anywhere in the document
+                    if 'Prerequisites' in checked_sections and (row_data.get('Prerequisites') == "[Not Found]" or 'Prerequisites' not in row_data):
+                        extracted_prereqs = extract_prerequisites(content)
+                        if extracted_prereqs:
+                            row_data['Prerequisites'] = extracted_prereqs
+                    
                     export_data.append(row_data)
                 
                 wb = write_to_excel(export_data)
@@ -521,6 +573,13 @@ with col_compare:
                     for section in checked_sections:
                         original_section = extract_section(original_content, section)
                         new_section = extract_section(new_content, section)
+                        
+                        # Search for prerequisites anywhere in the document if not found
+                        if section == 'Prerequisites':
+                            if not original_section or original_section == "[NOT FOUND]":
+                                original_section = extract_prerequisites(original_content)
+                            if not new_section or new_section == "[NOT FOUND]":
+                                new_section = extract_prerequisites(new_content)
                         
                         col_a, col_b = st.columns(2)
                         
@@ -574,6 +633,13 @@ with col_compare:
                 for section in checked_sections:
                     original_section = extract_section(original_content, section)
                     new_section = extract_section(new_content, section)
+                    
+                    # Search for prerequisites anywhere in the document if not found
+                    if section == 'Prerequisites':
+                        if not original_section or original_section == "[NOT FOUND]":
+                            original_section = extract_prerequisites(original_content)
+                        if not new_section or new_section == "[NOT FOUND]":
+                            new_section = extract_prerequisites(new_content)
                     
                     comparison_data['sections'][section] = {
                         'original': original_section or '[NOT FOUND]',
