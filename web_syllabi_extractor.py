@@ -210,6 +210,20 @@ def extract_section(content, section_name):
             cleaned_lines.append(stripped)
     
     result = '\n'.join(cleaned_lines)
+    
+    # Format Learning Outcomes with numbering
+    if section_name.lower() == 'learning outcomes' or any(alias in section_name.lower() for alias in ['learning objectives', 'course objectives']):
+        if result and result != "[Not Found]":
+            outcome_lines = result.split('\n')
+            formatted_outcomes = []
+            for idx, outcome in enumerate(outcome_lines, 1):
+                # Only add numbering if the line doesn't already have a number/bullet
+                if outcome and not outcome[0].isdigit() and outcome[0] not in ['•', '-', '*']:
+                    formatted_outcomes.append(f"{idx}. {outcome}")
+                else:
+                    formatted_outcomes.append(outcome)
+            result = '\n'.join(formatted_outcomes)
+    
     return result if result else None
 
 def write_to_excel(data):
