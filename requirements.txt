@@ -1,0 +1,5 @@
+PyQt6==6.6.1
+openpyxl==3.11.0
+python-docx==0.8.11
+PyPDF2==4.0.2
+streamlit>=1.28.0
